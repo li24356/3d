@@ -74,30 +74,15 @@ class DiceFocalLoss(nn.Module):
         # 计算每个像素的 BCE Loss (不进行归约 reduction='none')
         # bce_loss = - [y * log(p) + (1-y) * log(1-p)]
         bce_loss = F.binary_cross_entropy_with_logits(logits, targets, reduction='none')
-        
-        # pt: 模型对该像素"正确类别"的预测概率
-        # 如果 target=1, pt=p; 如果 target=0, pt=1-p
-        # 数学上: BCE = -log(pt) => pt = exp(-BCE)
         pt = torch.exp(-bce_loss)
         
-        # 【关键修正】：计算动态 alpha_t
-        # 如果 target=1 (断层), alpha_t = alpha
-        # 如果 target=0 (背景), alpha_t = 1 - alpha
-        # 这样才能起到平衡正负样本的作用！
+        # [优化] 明确正负样本权重逻辑
+        # alpha_t: target=1时为alpha(0.75), target=0时为1-alpha(0.25)
         alpha_t = targets * self.alpha + (1 - targets) * (1 - self.alpha)
         
-        # Focal Loss 公式: alpha_t * (1-pt)^gamma * BCE
         focal_loss = alpha_t * (1 - pt) ** self.gamma * bce_loss
-        
-        # 对所有像素求平均
-        focal_loss = focal_loss.mean()
+        return self.weight_dice * dice_loss + self.weight_focal * focal_loss.mean() 
 
-        # --------------------------------------------
-        # 3. 总损失
-        # --------------------------------------------
-        total_loss = self.weight_dice * dice_loss + self.weight_focal * focal_loss
-        
-        return total_loss
 # ============================================================================
 # 设置随机种子
 # ============================================================================
@@ -149,6 +134,14 @@ def augment_batch_data(x, y):
     if random.random() > 0.5:
         x = torch.flip(x, dims=[3])
         y = torch.flip(y, dims=[3])
+
+    
+    # 3. [新增] 随机 90度 旋转 (在 X-Y 平面)
+    # 地震切片通常在水平方向上没有绝对的方向性
+    k = random.randint(0, 3)
+    if k > 0:
+        x = torch.rot90(x, k, dims=[3, 4])
+        y = torch.rot90(y, k, dims=[3, 4])    
 
     return x, y
 
@@ -845,7 +838,7 @@ def main():
     # alpha=0.25 (根据原论文，配合gamma=2使用)
     # gamma=2.0 (标准聚焦参数)
     # weight_dice=1.0, weight_focal=1.0 (两者同等重要，或者 dice=0.8, focal=1.2 强调边缘)
-    criterion = DiceFocalLoss(weight_dice=1.0, weight_focal=1.0, gamma=2.0, alpha=0.25)
+    criterion = DiceFocalLoss(weight_dice=1.0, weight_focal=1.0, gamma=2.0, alpha=0.75)
     criterion.to(device)
     
     # ========== 自适应调度器初始化 ==========

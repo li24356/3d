@@ -1,0 +1,21 @@
+Git 推送流程（代码，不含数据）
+1) 查看修改：
+   git status -sb
+
+2) 暂存需要提交的文件：
+   git add <文件或目录>
+   # 全部暂存：git add .
+
+3) 提交：
+   git commit -m "简短描述"
+
+4) 推送到远程 main：
+   git push origin main
+
+注意事项
+- 确认 .gitignore 已排除数据和大文件（npy、sgy、pth、outputs、train 等）。
+- 推送若提示登录，在浏览器完成 GitHub 认证或使用 PAT。
+- 如果提示凭据问题，可先刷新凭据再推送：
+    git credential-manager-core erase https://github.com
+    git push origin main
+- 推送失败时先看错误信息（网络、权限、认证），必要时重试。
