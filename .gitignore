@@ -1,0 +1,53 @@
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+
+# Environments
+.env
+.venv
+env/
+venv/
+
+# IDE
+.vscode/
+.idea/
+
+# Data and models (do not upload)
+*.npy
+*.npz
+*.sgy
+*.mat
+*.h5
+*.pth
+*.pt
+*.ckpt
+*.pkl
+
+# Archives / large bundles
+*.zip
+*.7z
+*.tar
+*.tar.gz
+
+# Generated outputs
+checkpoints/
+checkpoints1/
+checkpoints2/
+checkpoints3/
+outputs/
+outputs1/
+outputs_final/
+prediction/
+eval_predictions/
+evaluation_results/
+train/
+visuals/
+comparison_result.png
+overlay_3views.png
+
+# Misc
+*.tmp
+*.bak

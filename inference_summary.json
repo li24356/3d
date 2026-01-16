@@ -1,0 +1,37 @@
+{
+  "input_shape": [
+    501,
+    601,
+    1101
+  ],
+  "patch_size": [
+    128,
+    128,
+    128
+  ],
+  "stride": [
+    96,
+    96,
+    96
+  ],
+  "overlap_rate": 0.5,
+  "normalization": "minmax",
+  "threshold": 0.5,
+  "inference_time_minutes": 3.0068250417709352,
+  "probability_stats": {
+    "min": 6.5267086029052734e-06,
+    "max": 1.0,
+    "mean": 0.01606180891394615,
+    "std": 0.09603507816791534
+  },
+  "mask_stats": {
+    "positive_ratio": 0.011945113899442875,
+    "positive_count": 3959951,
+    "total_voxels": 331512201
+  },
+  "coverage_stats": {
+    "min": 1.0,
+    "max": 12.0,
+    "mean": 2.277179002761841
+  }
+}
