@@ -59,8 +59,8 @@ class DiceFocalLoss(nn.Module):
         
         # 展平计算，防止 Batch 间干扰
         batch_size = logits.shape[0]
-        probs_flat = probs.view(batch_size, -1)
-        targets_flat = targets.view(batch_size, -1)
+        probs_flat = probs.reshape(batch_size, -1)
+        targets_flat = targets.reshape(batch_size, -1)
         
         intersection = (probs_flat * targets_flat).sum(dim=1)
         denominator = probs_flat.sum(dim=1) + targets_flat.sum(dim=1)
@@ -674,38 +674,73 @@ def train_epoch(model, loader, opt, criterion,
         'iou': running_iou / total
     }
 
-def validate(model, loader, criterion_bce, criterion_dice, device, use_robust_norm=True):
+def validate(model, loader, criterion, device, use_robust_norm=True):
+    """
+    验证函数（已修正：与训练Loss保持一致）
+    """
     model.eval()
     running_loss = 0.0
     running_bce = 0.0
     running_dice = 0.0
     running_iou = 0.0
     
+    # 定义辅助计算函数（仅用于日志显示，不影响反向传播或Loss计算）
+    # 这里的 BCE 用于观察纯粹的分类误差
+    def calc_bce(logits, targets):
+        return F.binary_cross_entropy_with_logits(logits, targets)
+        
+    # 这里的 Dice 用于观察纯粹的重叠度
+    def calc_dice(logits, targets):
+        probs = torch.sigmoid(logits)
+        intersection = (probs * targets).sum()
+        union = probs.sum() + targets.sum()
+        dice = (2. * intersection + 1e-6) / (union + 1e-6)
+        return 1 - dice
+
     with torch.no_grad():
         for x, y in tqdm(loader, desc='val', leave=False):
-            # 归一化（使用与训练相同的归一化方法）
+            # 1. 归一化（保持与训练一致）
             if use_robust_norm:
-                x = _robust_normalize_tensor_batch(x, use_mad=True, clip_range=(-4.0, 4.0)).to(device)
+                # 注意：这里也需要加上 device=device 以防万一，或者依赖 .to(device)
+                x = _robust_normalize_tensor_batch(x, use_mad=True, clip_range=(-4.0, 4.0), device=device)
             else:
-                x = _traditional_normalize_tensor_batch(x, clip_range=(-3.0, 3.0)).to(device)
+                x = _traditional_normalize_tensor_batch(x, clip_range=(-3.0, 3.0), device=device)
             
+            x = x.to(device)
             y = y.float().to(device)
+            
             logits = model(x)
-            loss_bce = criterion_bce(logits, y)
-            loss_dice = criterion_dice(logits, y)
-            loss = 0.3 * loss_bce + 0.7 * loss_dice  # 与训练阶段保持一致
+            
+            # ====================================================
+            # 2. 核心修改：使用与训练完全相同的 Loss 函数
+            # ====================================================
+            # 之前是手动加权 0.3*BCE + 0.7*Dice，这是错误的。
+            # 现在直接调用传入的 DiceFocalLoss
+            loss = criterion(logits, y) 
+            
+            # ====================================================
+            # 3. 辅助指标计算 (仅用于显示/日志)
+            # ====================================================
+            # 为了让日志里的 bce_loss 和 dice_loss 有数据，我们单独算一下
+            # 注意：这里的 loss_dice 是纯 Dice，而 criterion 里面可能包含 Focal
+            val_bce = calc_bce(logits, y)
+            val_dice = calc_dice(logits, y)
+            
             batch_iou = _batch_iou(logits, y)
-            running_loss += loss.item() * x.size(0)
-            running_bce += loss_bce.item() * x.size(0)
-            running_dice += loss_dice.item() * x.size(0)
-            running_iou += batch_iou.item() * x.size(0)
+            
+            # 累加
+            batch_size = x.size(0)
+            running_loss += loss.item() * batch_size
+            running_bce += val_bce.item() * batch_size
+            running_dice += val_dice.item() * batch_size
+            running_iou += batch_iou.item() * batch_size
     
     total = len(loader.dataset)
     return {
-        'total_loss': running_loss / total,
-        'bce_loss': running_bce / total,
-        'dice_loss': running_dice / total,
-        'iou': running_iou / total
+        'total_loss': running_loss / total, # 这是最重要的指标，用于 Early Stopping
+        'bce_loss': running_bce / total,    # 仅作参考
+        'dice_loss': running_dice / total,  # 仅作参考
+        'iou': running_iou / total          # 重要的评价指标
     }
 
 # ============================================================================

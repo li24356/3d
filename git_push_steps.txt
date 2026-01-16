@@ -7,7 +7,7 @@ Git 推送流程（代码，不含数据）
    # 全部暂存：git add .
 
 3) 提交：
-   git commit -m "简短描述"
+   git commit -m "update"
 
 4) 推送到远程 main：
    git push origin main
