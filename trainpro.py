@@ -637,6 +637,22 @@ def train_epoch(model, loader, opt, criterion,
             batch_iou = _batch_iou(logits, y)
             (loss / accum_steps).backward()
 
+        # 记录指标（与验证保持一致）
+        with torch.no_grad():
+            # 纯 BCE 观察分类误差
+            bce = F.binary_cross_entropy_with_logits(logits, y)
+            # 纯 Dice 观察重叠度
+            probs = torch.sigmoid(logits)
+            intersection = (probs * y).sum()
+            union = probs.sum() + y.sum()
+            dice = 1 - (2. * intersection + 1e-6) / (union + 1e-6)
+
+        batch_size = x.size(0)
+        running_loss += loss.item() * batch_size
+        running_bce += bce.item() * batch_size
+        running_dice += dice.item() * batch_size
+        running_iou += batch_iou.item() * batch_size
+
 
         # 梯度累积：每 accum_steps 步更新一次
         if (step % accum_steps) == 0:
@@ -651,6 +667,7 @@ def train_epoch(model, loader, opt, criterion,
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
                 opt.step()
             opt.zero_grad()
+
             if scheduler is not None:
                 scheduler.step()
     
@@ -665,6 +682,9 @@ def train_epoch(model, loader, opt, criterion,
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
             opt.step()
         opt.zero_grad()
+
+        if scheduler is not None:
+            scheduler.step()
     
     total = len(loader.dataset)
     return {
@@ -878,6 +898,14 @@ def main():
     
     # ========== 自适应调度器初始化 ==========
     steps_per_epoch = len(loader_train) 
+
+    # 【优化】计算实际的 step 次数
+    # 如果使用了梯度累积，优化器更新的次数是 总batch数 / accum_steps
+    # 我们需要确保 OneCycle 的总步数与优化器实际 step 的次数一致
+    effective_steps_per_epoch = steps_per_epoch // accum_steps
+    if steps_per_epoch % accum_steps != 0:
+         effective_steps_per_epoch += 1 # 加上最后一个不完整的 batch
+        
     total_steps = steps_per_epoch * epochs
 
     print(f"One-Cycle 配置: Max LR=1e-3, Total Steps={total_steps}")
