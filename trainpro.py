@@ -103,7 +103,7 @@ set_seed(42)
 # 可编辑模型配置（在此处修改以训练不同模型）
 # ============================================================================
 MODEL_CONFIG = {
-    "model_name": "attention_unet3d",  # 可选: 'unet3d', 'aerb_light', 'attn_light', 'seunet3d', 'aerb3d', 'attention_unet3d'
+    "model_name": "attn_light",  # 可选: 'unet3d', 'aerb_light', 'attn_light', 'seunet3d', 'aerb3d', 'attention_unet3d'
     "in_channels": 1,
     "out_channels": 1,
     "pretrained_ckpt": None,
@@ -134,15 +134,6 @@ def augment_batch_data(x, y):
     if random.random() > 0.5:
         x = torch.flip(x, dims=[3])
         y = torch.flip(y, dims=[3])
-
-    
-    # 3. [新增] 随机 90度 旋转 (在 X-Y 平面)
-    # 地震切片通常在水平方向上没有绝对的方向性
-    k = random.randint(0, 3)
-    if k > 0:
-        x = torch.rot90(x, k, dims=[3, 4])
-        y = torch.rot90(y, k, dims=[3, 4])    
-
     return x, y
 
 # ============================================================================
@@ -683,8 +674,7 @@ def train_epoch(model, loader, opt, criterion,
             opt.step()
         opt.zero_grad()
 
-        if scheduler is not None:
-            scheduler.step()
+        
     
     total = len(loader.dataset)
     return {
