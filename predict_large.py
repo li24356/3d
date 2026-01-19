@@ -28,7 +28,7 @@ expected_shape = (501,601,1101)         # 期望的3D形状 (Z, Y, X)
 expected_order = 'C'                      # 数据排列顺序：'C' 或 'F'
 
 
-model_name = 'attention_unet3d'   # 可改为 'attn_light' / 'aerb_light' / 你的自定义 key/ 'unet3d' 
+model_name = 'attn_light'   # 可改为 'attn_light' / 'aerb_light' / 你的自定义 key/ 'unet3d' 
 
 
 
@@ -732,7 +732,7 @@ def main():
 
     # 新增：以输入文件名为第一层目录
     input_name = Path(input_path).stem
-    output_dir = Path('outputs1') / input_name / model_name / timestamp
+    output_dir = Path('outputs') / input_name / model_name / timestamp
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # 二值mask（保留）
@@ -749,6 +749,9 @@ def main():
         'patch_size': patch_size,
         'stride': stride,
         'threshold': float(threshold),
+        'pos_ratio': float(pos_ratio),
+        'pos_count': int(mask.sum()),
+        'neg_count': int(mask.size - mask.sum()),
         'total_time_s': float(inference_time),
         'mask_path': str(mask_path),
     }

@@ -155,7 +155,7 @@ class UpBlock(nn.Module):
 # ==========================================
 # 5. 最终模型: High-Performance Residual Attention UNet
 # ==========================================
-class HResAttUNet3D(nn.Module):
+class AERBPRO(nn.Module):
     def __init__(self, in_channels=1, out_channels=1, base_channels=64):
         """
         base_channels: 建议设为 32 或 64 以获得最佳性能 (显存允许的话)
@@ -220,7 +220,7 @@ if __name__ == "__main__":
     print("=" * 50)
     
     # 1. 初始化模型 (Base=64 是比较均衡的高性能配置，显存够可以开64)
-    model = HResAttUNet3D(in_channels=1, out_channels=1, base_channels=64)
+    model = AERBPRO(in_channels=1, out_channels=1, base_channels=64)
     
     # 2. 计算参数量
     total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)

@@ -10,7 +10,7 @@ import cigvis
 # 1. 加载数据
 shape = (501, 601, 1101)
 a= np.load(r'2020Z205_3D_PSTM_TIME_mini_400_2600ms.npy').reshape(501,601,1101)
-b= np.load(r'outputs_final\2020Z205_3D_PSTM_TIME_mini_400_2600ms\20260116_153801\mask_thick.npy').reshape(501,601,1101)
+b= np.load(r'outputs_final\2020Z205_3D_PSTM_TIME_mini_400_2600ms\20260119_103250\mask_thick.npy').reshape(501,601,1101)
 
 # 2. 处理断层数据的透明度
 # 必须先转为 float32 类型

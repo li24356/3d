@@ -22,7 +22,7 @@ from models.attention_unet3d import AttentionUNet3D
 # ---------- 可编辑配置 ----------
 input_path = Path(r'2020Z205_3D_PSTM_TIME_mini_400_2600ms.npy')      # 输入文件路径
 checkpoint_path = None 
-checkpoints_root = Path('checkpoints1')
+checkpoints_root = Path('checkpoints3')
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 # 维度配置

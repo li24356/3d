@@ -416,8 +416,8 @@ def main():
 
     
     # 模型选择（必须与训练时一致）
-    model_name = 'attention_unet3d'  # 修改为你训练时使用的模型名称
-    explicit_ckpt = Path(r'checkpoints2\attention_unet3d\latest\model_best_iou.pth')  # 可以显式指定路径，如 'checkpoints1/unet3d/latest/model_best_loss.pth'
+    model_name = 'attn_light'  # 修改为你训练时使用的模型名称
+    explicit_ckpt = Path(r'checkpoints3\attn_light\latest\model_best_iou.pth')  # 可以显式指定路径，如 'checkpoints1/unet3d/latest/model_best_loss.pth' 
     
 
 

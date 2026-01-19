@@ -22,7 +22,7 @@ from models.seunet3d import SEUNet3D
 from models.AERB3d import AERBUNet3D
 from models.attention_unet3d import AttentionUNet3D
 from models.CBAM import CBAM_UNet3D
-
+from models.AERB_pro import AERBPRO
 
 # ======= TF32 设置（RTX 3090 强烈推荐）=======
 torch.backends.cuda.matmul.allow_tf32 = True
@@ -103,7 +103,7 @@ set_seed(42)
 # 可编辑模型配置（在此处修改以训练不同模型）
 # ============================================================================
 MODEL_CONFIG = {
-    "model_name": "attn_light",  # 可选: 'unet3d', 'aerb_light', 'attn_light', 'seunet3d', 'aerb3d', 'attention_unet3d'
+    "model_name": "aerb_pro",  # 可选: 'unet3d', 'aerb_light', 'attn_light', 'seunet3d', 'aerb3d', 'attention_unet3d', 'cbam_unet3d', 'aerb_pro'
     "in_channels": 1,
     "out_channels": 1,
     "pretrained_ckpt": None,
@@ -118,6 +118,7 @@ _MODEL_REGISTRY = {
     'aerb3d': AERBUNet3D,
     'attention_unet3d': AttentionUNet3D,
     'cbam_unet3d': CBAM_UNet3D,
+    'aerb_pro': AERBPRO,
 }
 
 def augment_batch_data(x, y):
@@ -199,6 +200,10 @@ def build_model_from_config(cfg):
         kwargs["in_channels"] = cfg["in_channels"]
     if "out_channels" in cfg:
         kwargs["out_channels"] = cfg["out_channels"]
+    
+    # 为AERB_pro模型使用较小的base_channels以节省显存
+    if name == "aerb_pro":
+        kwargs["base_channels"] = 32  # 使用32而不是默认的64
 
     # 实例化
     model = cls(**{k: v for k, v in kwargs.items() if k in cls.__init__.__code__.co_varnames})
@@ -607,7 +612,7 @@ def train_epoch(model, loader, opt, criterion,
         x = x.to(device)
         y = y.float().to(device)
         
-        x, y = augment_batch_data(x, y)
+        # x, y = augment_batch_data(x, y)
         
         # ===== GPU上执行归一化 =====
         if use_robust_norm:
@@ -759,8 +764,8 @@ def validate(model, loader, criterion, device, use_robust_norm=True):
 def main():
     # ========== 训练配置 ==========
     root = Path('.')
-    epochs = 200               # 总训练epoch数（自适应调度器会自动调整）
-    batch_size = 8              # 批大小
+    epochs = 150             # 总训练epoch数（自适应调度器会自动调整）
+    batch_size = 4              # 批大小（AERB_pro显存需求较大，降低到4）
     lr = 1e-4                    # 初始学习率
     workers = 8               # 数据加载线程数
     device = 'cuda' if torch.cuda.is_available() else 'cpu'

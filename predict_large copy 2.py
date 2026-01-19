@@ -31,7 +31,7 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 expected_shape = (501,601,1101)
 expected_order = 'C'
 
-model_name = 'attention_unet3d'
+model_name = 'attn_light'   # 可改为 'attn_light' / 'aerb_light' / 你的自定义 key/ 'unet3d'
 
 # 模型配置
 patch_size = (128, 128, 128)
@@ -361,7 +361,8 @@ def main():
     # 5. 后处理 (含滞后阈值)
     print("Post-processing...")
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    save_dir = Path('outputs_final') / input_path.stem / timestamp
+    # 输出路径: outputs / input_name / model_name / timestamp
+    save_dir = Path('outputs') / input_path.stem / model_name / timestamp
     save_dir.mkdir(parents=True, exist_ok=True)
     
     # --- 策略 A: 调整阈值 (解决粘连的第一步) ---
@@ -383,12 +384,39 @@ def main():
     # 转回 uint8 用于保存
     mask_thick_uint8 = mask_thick.astype(np.uint8)
     mask_thin_uint8 = mask_thin.astype(np.uint8)
+
+    # 统计正样本比例并打印
+    pos_ratio = float(mask_thin_uint8.mean())
+    pos_count = int(mask_thin_uint8.sum())
+    neg_count = int(mask_thin_uint8.size - pos_count)
+    print(f"正样本比例: {pos_ratio:.4%} (正样本数={pos_count:,}, 负样本数={neg_count:,})")
     
     # 保存文件
     print("保存结果...")
     np.save(save_dir / out_prob_npy, prob_map)
     np.save(save_dir / 'mask_thick.npy', mask_thick_uint8) # 保存一份未瘦身的以备对比
     np.save(save_dir / out_mask_npy, mask_thin_uint8)      # 最终结果是瘦身后的
+
+    # 保存处理摘要（json）
+    summary = {
+        'model': model_name,
+        'checkpoint': str(ckpt),
+        'timestamp': timestamp,
+        'input': str(input_path),
+        'expected_shape': expected_shape,
+        'patch_size': patch_size,
+        'stride': stride,
+        'threshold_low': float(final_low_thresh),
+        'threshold_high': float(final_high_thresh),
+        'pos_ratio': pos_ratio,
+        'pos_count': pos_count,
+        'neg_count': neg_count,
+        'prob_path': str(save_dir / out_prob_npy),
+        'mask_path': str(save_dir / out_mask_npy),
+        'mask_thick_path': str(save_dir / 'mask_thick.npy'),
+    }
+    with open(save_dir / 'inference_summary.json', 'w') as f:
+        json.dump(summary, f, indent=2, ensure_ascii=False)
 
     # 6. SEGY 导出
     print("Generating SEGY...")
