@@ -592,13 +592,15 @@ def analyze_normalization_effect(loader, use_robust_norm=True, num_batches=5):
 # ============================================================================
 def train_epoch(model, loader, opt, criterion,
                 device, scaler=None, accum_steps=1, max_grad_norm=1.0,
-                use_robust_norm=True,scheduler=None):
+                use_robust_norm=True,scheduler=None, epoch=1, total_epochs=150):
     """
-    训练一个epoch，包含梯度裁剪
+    训练一个epoch，包含梯度裁剪和时间统计
     
     Args:
         max_grad_norm: 梯度裁剪的最大范数
         use_robust_norm: 是否使用鲁棒归一化
+        epoch: 当前epoch（用于时间估算）
+        total_epochs: 总epoch数（用于时间估算）
     """
     model.train()
     running_loss = 0.0
@@ -607,7 +609,14 @@ def train_epoch(model, loader, opt, criterion,
     running_iou = 0.0
     opt.zero_grad()
     
+    # 时间统计
+    import time
+    batch_times = []
+    epoch_start = time.time()
+    
     for step, (x, y) in enumerate(tqdm(loader, desc='train', leave=False), start=1):
+        batch_start = time.time()
+        
         # ===== 直接转到GPU，移除增强步骤 =====
         x = x.to(device)
         y = y.float().to(device)
@@ -666,6 +675,11 @@ def train_epoch(model, loader, opt, criterion,
 
             if scheduler is not None:
                 scheduler.step()
+        
+        # 记录batch耗时（排除首个batch的预热时间）
+        batch_time = time.time() - batch_start
+        if step > 1:  # 跳过第一个batch
+            batch_times.append(batch_time)
     
     # 若最后不足 accum_steps，也要执行一次 step（安全处理）
     if len(loader) % accum_steps != 0:
@@ -679,15 +693,32 @@ def train_epoch(model, loader, opt, criterion,
             opt.step()
         opt.zero_grad()
 
-        
+    epoch_time = time.time() - epoch_start
     
+    # 计算时间统计
     total = len(loader.dataset)
-    return {
+    result = {
         'total_loss': running_loss / total,
         'bce_loss': running_bce / total,
         'dice_loss': running_dice / total,
-        'iou': running_iou / total
+        'iou': running_iou / total,
+        'epoch_time': epoch_time,
+        'avg_batch_time': np.mean(batch_times) if batch_times else 0,
+        'num_batches': len(batch_times)
     }
+    
+    # 当累积的batch数达到5-10个时打印时间预估（在第一个epoch后）
+    if epoch == 1 and len(batch_times) >= 5:
+        avg_time_per_batch = np.mean(batch_times)
+        avg_time_per_epoch = len(loader) * avg_time_per_batch
+        total_time_estimate = avg_time_per_epoch * total_epochs / 3600  # 转换为小时
+        print(f"\n⏱️  时间统计 (基于前{len(batch_times)}个batch):")
+        print(f"   平均每batch耗时: {avg_time_per_batch:.3f}s")
+        print(f"   平均每epoch耗时: {avg_time_per_epoch/60:.1f}分钟")
+        print(f"   📊 预计总训练时间: {total_time_estimate:.1f}小时 ({total_time_estimate*60:.0f}分钟)")
+        print(f"   (基于首个epoch的平均速度，仅供参考)\n")
+    
+    return result
 
 def validate(model, loader, criterion, device, use_robust_norm=True):
     """
@@ -989,7 +1020,8 @@ def main():
             model, loader_train, opt, criterion,
             device, scaler=scaler, accum_steps=accum_steps, 
             max_grad_norm=max_grad_norm,
-            use_robust_norm=use_robust_normalization,scheduler=scheduler
+            use_robust_norm=use_robust_normalization,scheduler=scheduler,
+            epoch=epoch, total_epochs=epochs
         )
         train_loss = train_metrics['total_loss']
         

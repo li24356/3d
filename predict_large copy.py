@@ -18,18 +18,19 @@ from models.AERB3d import AERBUNet3DLight
 from models.attention_unet3d import LightAttentionUNet3D
 from models.seunet3d import SEUNet3D
 from models.attention_unet3d import AttentionUNet3D
+from models.AERB_pro import AERBPRO
 
 # ---------- 可编辑配置 ----------
-input_path = Path(r'2020Z205_3D_PSTM_TIME_mini_400_2600ms.npy')      # 输入文件路径
+input_path = Path(r'F3data.npy')      # 输入文件路径
 checkpoint_path = None 
 checkpoints_root = Path('checkpoints3')
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 # 维度配置
-expected_shape = (501,601,1101)         # 期望的3D形状 (Z, Y, X)
+expected_shape = (601,951,391)         # 期望的3D形状 (Z, Y, X)
 expected_order = 'C'                  # 数据排列顺序：'C' 或 'F'
 
-model_name = 'attn_light'   # 模型选择
+model_name = 'aerb_pro'   # 模型选择
 
 # 模型配置
 patch_size = (128, 128, 128)              # 模型训练时的输入尺寸（固定）
@@ -510,12 +511,19 @@ def main():
     MODEL_REGISTRY = {
         'unet3d': UNet3D, 'aerb_light': AERBUNet3DLight, 'attn_light': LightAttentionUNet3D,
         'aerb': AERBUNet3D, 'seunet': SEUNet3D, 'attention_unet3d': AttentionUNet3D,
+        'aerb_pro': AERBPRO,
     }
     ModelClass = MODEL_REGISTRY.get(model_name, UNet3D)
     print(f"选择模型: {model_name} -> {ModelClass.__name__}")
     
+    # 特殊处理：AERB_pro 使用 base_channels=32（与训练一致）
+    if model_name == 'aerb_pro':
+        kwargs_list = [{'in_channels': 1, 'out_channels': 1, 'base_channels': 32}, {'in_channels': 1, 'base_channels': 32}]
+    else:
+        kwargs_list = [{'in_channels': 1, 'out_channels': 1}, {'in_channels': 1, 'base_channels': 16}, {}]
+    
     model = None
-    for kwargs in ({'in_channels': 1, 'out_channels': 1}, {'in_channels': 1, 'base_channels': 16}, {}):
+    for kwargs in kwargs_list:
         try:
             model = ModelClass(**kwargs)
             print(f"模型初始化成功，参数: {kwargs}")
@@ -599,7 +607,7 @@ def main():
     print(f"\n7. 保存结果...")
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     input_name = Path(input_path).stem
-    output_dir = Path('outputs1') / input_name / model_name / timestamp
+    output_dir = Path('outputs') / input_name / model_name / timestamp
     output_dir.mkdir(parents=True, exist_ok=True)
     
     # 二值化
@@ -637,7 +645,7 @@ def main():
     
     # 8. 生成 SEGY
     print(f"\n8. 生成 SEG-Y 文件...")
-    ORIGINAL_FILE = r'2020Z205_3D_PSTM_TIME_mini_400_2600ms.sgy'
+    ORIGINAL_FILE = r'F3data.sgy'
     PREDICTED_NPY = mask_path
     OUTPUT_FILE = output_dir / 'predicted_result_segyio_final1.sgy'
     

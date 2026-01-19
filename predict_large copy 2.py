@@ -20,18 +20,19 @@ from models.AERB3d import AERBUNet3DLight
 from models.attention_unet3d import LightAttentionUNet3D
 from models.seunet3d import SEUNet3D
 from models.attention_unet3d import AttentionUNet3D
+from models.AERB_pro import AERBPRO
 
 # ---------- 核心配置 ----------
-input_path = Path(r'2020Z205_3D_PSTM_TIME_mini_400_2600ms.npy')
+input_path = Path(r'F3data.npy')
 checkpoint_path = None 
 checkpoints_root = Path('checkpoints3')
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 # 维度配置
-expected_shape = (501,601,1101)
+expected_shape = (601,951,391)
 expected_order = 'C'
 
-model_name = 'attn_light'   # 可改为 'attn_light' / 'aerb_light' / 你的自定义 key/ 'unet3d'
+model_name = 'aerb_pro'   # 可改为 'attn_light' / 'aerb_light' / 你的自定义 key/ 'unet3d'
 
 # 模型配置
 patch_size = (128, 128, 128)
@@ -327,11 +328,21 @@ def main():
     MODEL_REGISTRY = {
         'unet3d': UNet3D, 'aerb_light': AERBUNet3DLight, 'attn_light': LightAttentionUNet3D,
         'aerb': AERBUNet3D, 'seunet': SEUNet3D, 'attention_unet3d': AttentionUNet3D,
+        'aerb_pro': AERBPRO,
     }
     ModelClass = MODEL_REGISTRY.get(model_name, UNet3D)
-    # 简单工厂模式
-    try: model = ModelClass(in_channels=1, out_channels=1)
-    except: model = ModelClass(in_channels=1, base_channels=16)
+    
+    # 特殊处理：AERB_pro 使用 base_channels=32（与训练一致）
+    if model_name == 'aerb_pro':
+        try: 
+            model = ModelClass(in_channels=1, out_channels=1, base_channels=32)
+        except: 
+            model = ModelClass(in_channels=1, base_channels=32)
+    else:
+        try: 
+            model = ModelClass(in_channels=1, out_channels=1)
+        except: 
+            model = ModelClass(in_channels=1, base_channels=16)
     
     device_t = torch.device(device)
     model.to(device_t)
@@ -420,7 +431,7 @@ def main():
 
     # 6. SEGY 导出
     print("Generating SEGY...")
-    ORIG_SGY = r'2020Z205_3D_PSTM_TIME_mini_400_2600ms.sgy'
+    ORIG_SGY = os.path.splitext(str(input_path))[0] + '.sgy'
     if os.path.exists(ORIG_SGY):
         try:
             # 快速重塑

@@ -9,14 +9,12 @@ import json
 from datetime import datetime
 import segyio
 from models.unet3d import UNet3D
-from models.AERB3d import AERBUNet3D
-from models.unet3d import UNet3D
-from models.AERB3d import AERBUNet3DLight
-from models.attention_unet3d import LightAttentionUNet3D
+from models.AERB3d import AERBUNet3D, AERBUNet3DLight
+from models.attention_unet3d import LightAttentionUNet3D, AttentionUNet3D
 from models.seunet3d import SEUNet3D
-from models.attention_unet3d import AttentionUNet3D
+from models.AERB_pro import AERBPRO
 # ---------- 可编辑配置（直接在文件中修改） ----------
-input_path = Path(r'2020Z205_3D_PSTM_TIME_mini_400_2600ms.npy')      # 输入文件路径
+input_path = Path(r'F3data.npy')      # 输入文件路径
 # checkpoint_path = Path('checkpoints/unet3d_best.pth')
 checkpoint_path = None 
 checkpoints_root = Path('checkpoints3')
@@ -24,11 +22,11 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 # 新增：选择要测试/推理的模型 key（与下方 MODEL_REGISTRY 对应）
 
 # 维度配置
-expected_shape = (501,601,1101)         # 期望的3D形状 (Z, Y, X)
+expected_shape = (601, 951, 391)        # 期望的3D形状 (Z, Y, X)
 expected_order = 'C'                      # 数据排列顺序：'C' 或 'F'
 
 
-model_name = 'attn_light'   # 可改为 'attn_light' / 'aerb_light' / 你的自定义 key/ 'unet3d' 
+model_name = 'aerb_pro'   # 可改为 'attn_light' / 'aerb_light' / 你的自定义 key/ 'unet3d' 
 
 
 
@@ -591,12 +589,21 @@ def main():
         'aerb': AERBUNet3D,
         'seunet': SEUNet3D,
         'attention_unet3d': AttentionUNet3D,
+        'aerb_pro': AERBPRO,
     }
 
     ModelClass = MODEL_REGISTRY.get(model_name, UNet3D)
-    # 尝试几组常见构造参数以兼容不同模型签名
+    
+    # 特殊处理：AERB_pro 在训练时使用 base_channels=32（与trainpro.py一致）
+    if model_name == 'aerb_pro':
+        kwargs_list = [{'in_channels': 1, 'out_channels': 1, 'base_channels': 32}, 
+                       {'in_channels': 1, 'base_channels': 32}]
+    else:
+        kwargs_list = [{'in_channels': 1, 'out_channels': 1}, 
+                       {'in_channels': 1, 'base_channels': 16}, {}]
+    
     model = None
-    for kwargs in ({'in_channels': 1, 'out_channels': 1}, {'in_channels': 1, 'base_channels': 16}, {}):
+    for kwargs in kwargs_list:
         try:
             model = ModelClass(**kwargs)
             break
@@ -763,7 +770,7 @@ def main():
     
     # 1. 配置路径 (使用您指定的固定路径)
     # 这里的 mask_path 是上面代码刚刚生成的，直接拿来用
-    ORIGINAL_FILE = r'2020Z205_3D_PSTM_TIME_mini_400_2600ms.sgy'
+    ORIGINAL_FILE = ORIG_SGY = os.path.splitext(str(input_path))[0] + '.sgy'
     PREDICTED_NPY = str(mask_path) 
     OUTPUT_FILE = str(output_dir / 'predicted_result_segyio_final1.sgy')
     

@@ -5,12 +5,12 @@ import cigvis
 # 2020Z205_3D_PSTM_TIME_mini_400_2600ms.npy   shape(501,601,1101)
 #RTM_P_T_32f_S1_ziti_test.npy   shape(512,1216,1920)
 # Load data
-
+# shape (601,951,391) 
 
 # 1. 加载数据
-shape = (501, 601, 1101)
-a= np.load(r'2020Z205_3D_PSTM_TIME_mini_400_2600ms.npy').reshape(501,601,1101)
-b= np.load(r'outputs_final\2020Z205_3D_PSTM_TIME_mini_400_2600ms\20260119_103250\mask_thick.npy').reshape(501,601,1101)
+shape = (601, 951, 391)
+a= np.load(r'F3data.npy').reshape(601,951,391)
+b= np.load(r'outputs\F3data\attn_light\20260119_153627\pred_mask.npy').reshape(601,951,391)
 
 # 2. 处理断层数据的透明度
 # 必须先转为 float32 类型

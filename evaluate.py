@@ -14,6 +14,7 @@ from models.AERB3d import AERBUNet3DLight
 from models.attention_unet3d import LightAttentionUNet3D
 from models.attention_unet3d import AttentionUNet3D
 from models.seunet3d import SEUNet3D
+from models.AERB_pro import AERBPRO
 # ============================================================================
 # 归一化函数（必须与训练一致）
 # ============================================================================
@@ -407,20 +408,19 @@ def visualize_predictions(pred_files, ds_val, vis_dir, max_vis=15):
 def main():
     # ========== 配置 ==========
     root = Path('.')
-
-
-
-
-
-
-
     
+
+
     # 模型选择（必须与训练时一致）
-    model_name = 'attn_light'  # 修改为你训练时使用的模型名称
-    explicit_ckpt = Path(r'checkpoints3\attn_light\latest\model_best_iou.pth')  # 可以显式指定路径，如 'checkpoints1/unet3d/latest/model_best_loss.pth' 
-    
-
-
+    model_name = 'aerb_pro'  # 修改为你训练时使用的模型名称
+    explicit_ckpt = Path(r'checkpoints3\aerb_pro\latest\model_best_iou.pth')  # 可以显式指定路径，如 'checkpoints1/unet3d/latest/model_best_loss.pth' 
+   
+   
+   
+   
+   
+   
+    checkpoints_root = Path('checkpoints3')
 
 
 
@@ -430,7 +430,7 @@ def main():
     use_robust_norm = True  # 重要！必须与训练一致
     
     # 自动查找checkpoint
-    checkpoints_root = Path('checkpoints1')
+
     
     # 数据配置
     dat_dtype = 'float32'
@@ -482,17 +482,26 @@ def main():
         'aerb3d': AERBUNet3D,
         'attention_unet3d': AttentionUNet3D,
         'seunet3d': SEUNet3D,
+        'aerb_pro': AERBPRO,
     }
     
     ModelClass = MODEL_REGISTRY.get(model_name, UNet3D)
     
     # 尝试不同的初始化参数（与训练时一致）
-    model_kwargs_list = [
-        {'in_channels': 1, 'out_channels': 1},
-        {'in_channels': 1, 'base_channels': 16},
-        {'in_channels': 1, 'out_channels': 1, 'base_channels': 16},
-        {}  # 空参数
-    ]
+    # 特殊处理：AERB_pro 在训练时使用 base_channels=32（与 trainpro.py 一致）
+    if model_name == 'aerb_pro':
+        model_kwargs_list = [
+            {'in_channels': 1, 'out_channels': 1, 'base_channels': 32},  # 与训练时一致
+            {'in_channels': 1, 'base_channels': 32},
+            {'in_channels': 1, 'out_channels': 1},
+        ]
+    else:
+        model_kwargs_list = [
+            {'in_channels': 1, 'out_channels': 1},
+            {'in_channels': 1, 'base_channels': 16},
+            {'in_channels': 1, 'out_channels': 1, 'base_channels': 16},
+            {}  # 空参数
+        ]
     
     model = None
     for kwargs in model_kwargs_list:
