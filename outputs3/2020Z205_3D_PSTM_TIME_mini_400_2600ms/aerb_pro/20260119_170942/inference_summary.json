@@ -1,0 +1,26 @@
+{
+  "model": "model_best_iou",
+  "timestamp": "20260119_170942",
+  "input": "2020Z205_3D_PSTM_TIME_mini_400_2600ms.npy",
+  "expected_shape": [
+    501,
+    601,
+    1101
+  ],
+  "patch_size": [
+    128,
+    128,
+    128
+  ],
+  "stride": [
+    96,
+    96,
+    96
+  ],
+  "threshold": 0.5,
+  "pos_ratio": 0.037617888458952975,
+  "pos_count": 12470789,
+  "neg_count": 319041412,
+  "total_time_s": 107.08681869506836,
+  "mask_path": "outputs3\\2020Z205_3D_PSTM_TIME_mini_400_2600ms\\aerb_pro\\20260119_170942\\pred_mask.npy"
+}

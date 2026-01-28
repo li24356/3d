@@ -412,8 +412,8 @@ def main():
 
 
     # 模型选择（必须与训练时一致）
-    model_name = 'aerb_pro'  # 修改为你训练时使用的模型名称
-    explicit_ckpt = Path(r'checkpoints3\aerb_pro\latest\model_best_iou.pth')  # 可以显式指定路径，如 'checkpoints1/unet3d/latest/model_best_loss.pth' 
+    model_name = 'attn_light'  # 修改为你训练时使用的模型名称
+    explicit_ckpt = Path(r'checkpoints4\attn_light\latest\model_best_iou.pth')  # 可以显式指定路径，如 'checkpoints1/unet3d/latest/model_best_loss.pth' 
    
    
    
@@ -488,11 +488,11 @@ def main():
     ModelClass = MODEL_REGISTRY.get(model_name, UNet3D)
     
     # 尝试不同的初始化参数（与训练时一致）
-    # 特殊处理：AERB_pro 在训练时使用 base_channels=32（与 trainpro.py 一致）
+    # 特殊处理：AERB_pro 默认用 base_channels=16（根据 checkpoint 推断后可能重新初始化）
     if model_name == 'aerb_pro':
         model_kwargs_list = [
-            {'in_channels': 1, 'out_channels': 1, 'base_channels': 32},  # 与训练时一致
-            {'in_channels': 1, 'base_channels': 32},
+            {'in_channels': 1, 'out_channels': 1, 'base_channels': 16},  # 默认值
+            {'in_channels': 1, 'base_channels': 16},
             {'in_channels': 1, 'out_channels': 1},
         ]
     else:
@@ -559,6 +559,23 @@ def main():
     
     if checkpoint_path and checkpoint_path.exists():
         print(f'加载checkpoint: {checkpoint_path}')
+        
+        # [新增] 如果是 aerb_pro 模型，根据 checkpoint 路径推断 base_channels
+        if model_name == 'aerb_pro':
+            ckpt_path_str = str(checkpoint_path)
+            if '_c16' in ckpt_path_str or 'c16' in ckpt_path_str.lower():
+                inferred_base_channels = 16
+            elif '_c32' in ckpt_path_str or 'c32' in ckpt_path_str.lower():
+                inferred_base_channels = 32
+            else:
+                inferred_base_channels = 16  # 默认值
+            
+            print(f'从 checkpoint 路径推断: base_channels={inferred_base_channels}')
+            
+            # 重新初始化模型（使用正确的 base_channels）
+            model = AERBPRO(in_channels=1, out_channels=1, base_channels=inferred_base_channels)
+            model.to(device)
+            print(f'模型已重新初始化为: base_channels={inferred_base_channels}')
         
         # 检测归一化方法
         detected_norm_method = detect_normalization_method_from_checkpoint(checkpoint_path)

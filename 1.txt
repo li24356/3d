@@ -1,0 +1,14 @@
+outputs2\2020Z205_3D_PSTM_TIME_mini_400_2600ms\attention_unet3d\20260120_153240\pred_mask.npy
+outputs1\2020Z205_3D_PSTM_TIME_mini_400_2600ms\attention_unet3d\20260120_145952\pred_mask.npy
+
+原文件 outputs\2020Z205_3D_PSTM_TIME_mini_400_2600ms\attention_unet3d\20260120_151155\pred_mask.npy
+新  outputs5\2020Z205_3D_PSTM_TIME_mini_400_2600ms\attention_unet3d\20260123_152827\pred_mask.npy（不确定）
+outputs6\2020Z205_3D_PSTM_TIME_mini_400_2600ms\aerb\20260124_140451\pred_mask.npy
+
+
+
+
+
+outputs5\2020Z205_3D_PSTM_TIME_mini_400_2600ms\attention_unet3d\20260123_152827\pred_mask.npy    aerb_4c_1.sgy
+outputs6\2020Z205_3D_PSTM_TIME_mini_400_2600ms\aerb\20260124_140451\pred_mask.npy     aerb_4c_2.sgy 
+outputs2\2020Z205_3D_PSTM_TIME_mini_400_2600ms\attention_unet3d\20260120_153240\pred_mask.npy  aerb_4c_3.sgy

@@ -1,0 +1,29 @@
+{
+  "model": "aerb_pro",
+  "checkpoint": "checkpoints3\\aerb_pro\\latest\\model_best_loss.pth",
+  "timestamp": "20260119_173309",
+  "input": "2020Z205_3D_PSTM_TIME_mini_400_2600ms.npy",
+  "expected_shape": [
+    501,
+    601,
+    1101
+  ],
+  "patch_size": [
+    128,
+    128,
+    128
+  ],
+  "stride": [
+    64,
+    64,
+    64
+  ],
+  "threshold_low": 0.45,
+  "threshold_high": 0.7,
+  "pos_ratio": 0.002964135247619438,
+  "pos_count": 982647,
+  "neg_count": 330529554,
+  "prob_path": "outputs3\\2020Z205_3D_PSTM_TIME_mini_400_2600ms\\aerb_pro\\20260119_173309\\pred_prob.npy",
+  "mask_path": "outputs3\\2020Z205_3D_PSTM_TIME_mini_400_2600ms\\aerb_pro\\20260119_173309\\pred_mask.npy",
+  "mask_thick_path": "outputs3\\2020Z205_3D_PSTM_TIME_mini_400_2600ms\\aerb_pro\\20260119_173309\\mask_thick.npy"
+}

@@ -1,0 +1,24 @@
+训练配置
+========
+
+【数据路径】
+训练数据: synthetic_data_v1\train\seis
+训练标签: synthetic_data_v1\train\fault
+验证数据: synthetic_data_v1\prediction\seis
+验证标签: synthetic_data_v1\prediction\fault
+
+【训练配置】
+Epochs: 150
+数据增强: flip_rotation
+归一化方法: GPU Robust Z-Score (MAD)
+归一化截断范围: (-4.0, 4.0)
+损失函数: DiceFocalLoss (Dice: 1.0, Focal: 1.0, gamma=2.0, alpha=0.75)
+优化器: adamw
+学习率: 0.0001
+权重衰减: 0.0001
+调度器类型: One-Cycle LR
+批大小: 8
+工作线程: 4
+AMP混合精度: 启用
+模型: attention_unet3d
+模型参数量: 5,668,509

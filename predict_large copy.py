@@ -20,17 +20,38 @@ from models.seunet3d import SEUNet3D
 from models.attention_unet3d import AttentionUNet3D
 from models.AERB_pro import AERBPRO
 
+# 2020Z205_3D_PSTM_TIME_mini_400_2600ms.npy   shape(501,601,1101)
+# RTM_P_T_32f_S1_ziti_test.npy   shape(512,1216,1920)
+# F3data.npy  shape (601,951,391) 
+DATASETS = {
+    "PSTM": {
+        "data_path": Path(r"2020Z205_3D_PSTM_TIME_mini_400_2600ms.npy"),
+        "shape": (501, 601, 1101),
+    },
+    "RTM": {
+        "data_path": Path(r"RTM_P_T_32f_S1_ziti_test.npy"),
+        "shape": (512, 1216, 1920),
+    },
+    "F3": {
+        "data_path": Path(r"F3data.npy"),
+        "shape": (601, 951, 391),
+    },
+}
+
 # ---------- 可编辑配置 ----------
-input_path = Path(r'F3data.npy')      # 输入文件路径
+DATA_KEY = "F3"         # 选数据
+cfg = DATASETS[DATA_KEY]
+input_path = cfg["data_path"]      # 输入文件路径
 checkpoint_path = None 
-checkpoints_root = Path('checkpoints3')
+checkpoints_root = Path('checkpoints7')
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 # 维度配置
-expected_shape = (601,951,391)         # 期望的3D形状 (Z, Y, X)
+expected_shape = cfg["shape"]      # 期望的3D形状 (Z, Y, X)
 expected_order = 'C'                  # 数据排列顺序：'C' 或 'F'
 
-model_name = 'aerb_pro'   # 模型选择
+model_name = 'attention_unet3d'   # 模型选择
+outputdir = 'outputs999'   # 输出根目录
 
 # 模型配置
 patch_size = (128, 128, 128)              # 模型训练时的输入尺寸（固定）
@@ -316,7 +337,7 @@ def sliding_inference_high_precision(volume, model, device, patch_size, stride,
     pz, py, px = patch_size
     
     # 1. 准备高斯权重 (GPU)
-    weight_map = get_gaussian_weight_map(patch_size, sigma_scale=1.0/8).to(device)
+    weight_map = get_gaussian_weight_map(patch_size, sigma_scale=1.0/4).to(device)
     weight_map_cpu = None  # 延迟创建
     
     stats = calculate_patch_statistics((Z, Y, X), patch_size, stride)
@@ -330,7 +351,7 @@ def sliding_inference_high_precision(volume, model, device, patch_size, stride,
     print(f"  步长: {stride}")
     print(f"  总patch数: {len(coords):,}")
     print(f"  重叠率: Z={stats['overlap_z']:.1%}, Y={stats['overlap_y']:.1%}, X={stats['overlap_x']:.1%}")
-    print(f"  高斯权重: sigma_scale=1/8")
+    print(f"  高斯权重: sigma_scale=1/4")
     print(f"推理开始: 使用高斯加权融合...")
     
     # 2. 初始化累加器
@@ -394,7 +415,8 @@ def sliding_inference_high_precision(volume, model, device, patch_size, stride,
                 if use_amp:
                     with torch.cuda.amp.autocast():
                         logits = model(batch_input)
-                        probs = torch.sigmoid(logits)
+                    # sigmoid 在 autocast 外部执行，避免类型不匹配
+                    probs = torch.sigmoid(logits.float())
                 else:
                     probs = torch.sigmoid(model(batch_input))
             except RuntimeError as e:
@@ -484,6 +506,26 @@ def sliding_inference_high_precision(volume, model, device, patch_size, stride,
 def main():
     print_config_summary()
     
+    # 穷举测试配置区
+    # =======================================================
+    CASE_ID = 5  # <--- 修改这里：1 到 6  5可以 
+    # =======================================================
+
+    print(f"\n>>> 正在运行测试方案: CASE {CASE_ID}")
+    
+    # 定义 6 种置换配置 (trans_in, trans_out)
+    perms = {
+        1: ((0, 1, 2), (0, 1, 2)), # IL, XL, T (原样)
+        2: ((0, 2, 1), (0, 2, 1)), # IL, T, XL
+        3: ((1, 0, 2), (1, 0, 2)), # XL, IL, T
+        4: ((1, 2, 0), (2, 0, 1)), # XL, T, IL
+        5: ((2, 0, 1), (1, 2, 0)), # T, IL, XL (最常用)
+        6: ((2, 1, 0), (2, 1, 0)), # T, XL, IL
+    }
+
+    p_in, p_out = perms[CASE_ID]
+
+
     # 1. 读取数据
     if not input_path.exists():
         raise FileNotFoundError(f"输入文件不存在: {input_path}")
@@ -493,6 +535,7 @@ def main():
     
     if vol.ndim != 3:
         raise ValueError(f"读取后不是3D数组，shape={vol.shape}")
+
     
     print(f"数据形状: {vol.shape}")
     print(f"数据范围: 最小值={vol.min():.6f}, 最大值={vol.max():.6f}, 均值={vol.mean():.6f}")
@@ -505,8 +548,11 @@ def main():
         adjust_time = time.time() - adjust_start
         print(f"调整完成，耗时: {adjust_time:.2f}秒")
         print(f"最终形状: {vol.shape}")
-    
-    # 3. 初始化模型
+
+    vol = vol.transpose(*p_in)
+    vol = np.ascontiguousarray(vol)
+
+    # 3. 初始化模型（先用默认值，稍后根据checkpoint重新初始化）
     print(f"\n3. 初始化模型...")
     MODEL_REGISTRY = {
         'unet3d': UNet3D, 'aerb_light': AERBUNet3DLight, 'attn_light': LightAttentionUNet3D,
@@ -516,26 +562,29 @@ def main():
     ModelClass = MODEL_REGISTRY.get(model_name, UNet3D)
     print(f"选择模型: {model_name} -> {ModelClass.__name__}")
     
-    # 特殊处理：AERB_pro 使用 base_channels=32（与训练一致）
-    if model_name == 'aerb_pro':
-        kwargs_list = [{'in_channels': 1, 'out_channels': 1, 'base_channels': 32}, {'in_channels': 1, 'base_channels': 32}]
-    else:
-        kwargs_list = [{'in_channels': 1, 'out_channels': 1}, {'in_channels': 1, 'base_channels': 16}, {}]
-    
-    model = None
-    for kwargs in kwargs_list:
-        try:
-            model = ModelClass(**kwargs)
-            print(f"模型初始化成功，参数: {kwargs}")
-            break
-        except Exception: continue
-    if model is None: 
-        model = UNet3D(in_channels=1, out_channels=1)
-        print(f"使用默认 UNet3D")
+    # 初始化模型（aerb_pro 暂时不初始化，等加载权重时再决定）
+    if model_name != 'aerb_pro':
+        kwargs_list = [{'in_channels': 1, 'out_channels': 1}, 
+                       {'in_channels': 1, 'base_channels': 16}, {}]
+        
+        model = None
+        for kwargs in kwargs_list:
+            try:
+                model = ModelClass(**kwargs)
+                print(f"模型初始化成功，参数: {kwargs}")
+                break
+            except Exception: 
+                continue
+        if model is None: 
+            model = UNet3D(in_channels=1, out_channels=1)
+            print(f"使用默认 UNet3D")
     
     device_t = torch.device(device)
-    model.to(device_t)
-    print(f"模型已加载到设备: {device_t}")
+    
+    # 将非AERBPRO模型移到设备上
+    if model_name != 'aerb_pro':
+        model.to(device_t)
+        print(f"模型已移到设备: {device_t}")
     
     # 4. 智能加载 Checkpoint
     print(f"\n4. 查找模型权重...")
@@ -573,7 +622,71 @@ def main():
     
     final_ckpt = Path(ckpt_to_use)
     print(f"✓ 找到权重: {final_ckpt}")
-    model = load_model_weights(model, final_ckpt, device_t)
+    
+    # 加载模型权重
+    if model_name == 'aerb_pro':
+        # AERBPRO: 优先使用 checkpoint 中的 base_channels 配置
+        print(f"  尝试 AERBPRO 不同的 base_channels 配置...")
+        model = None
+
+        checkpoint = torch.load(final_ckpt, map_location=device_t)
+
+        # 提取 state_dict，兼容 train.py 保存的 'model_state'
+        possible_keys = ['model_state', 'model_state_dict', 'state_dict', 'model', 'weights']
+        state_dict = None
+        for key in possible_keys:
+            if key in checkpoint:
+                state_dict = checkpoint[key]
+                print(f"  从 checkpoint['{key}'] 读取权重")
+                break
+        if state_dict is None and any(k.endswith('.weight') or k.endswith('.bias') for k in checkpoint.keys()):
+            state_dict = checkpoint
+            print("  直接使用 checkpoint 作为权重字典")
+        if state_dict is None:
+            raise RuntimeError("Checkpoint 中未找到模型权重键 (model_state/ state_dict 等)")
+
+        if all(k.startswith('module.') for k in state_dict.keys()):
+            state_dict = {k.replace('module.', ''): v for k, v in state_dict.items()}
+
+        ckpt_bc = None
+        if isinstance(checkpoint, dict):
+            ckpt_bc = checkpoint.get('model_config', {}).get('base_channels')
+
+        candidates = []
+        if ckpt_bc:
+            candidates.append(int(ckpt_bc))
+        for bc in [16, 32, 64]:
+            if bc not in candidates:
+                candidates.append(bc)
+
+        for base_ch in candidates:
+            try:
+                print(f"  → base_channels={base_ch}...")
+                temp_model = AERBPRO(in_channels=1, out_channels=1, base_channels=base_ch)
+                temp_model.to(device_t)
+
+                missing_keys, unexpected_keys = temp_model.load_state_dict(state_dict, strict=False)
+
+                if len(missing_keys) == 0:
+                    model = temp_model
+                    model.eval()  # 设置为评估模式
+                    print(f"  ✓ base_channels={base_ch} 加载成功！")
+                    break
+                else:
+                    print(f"  ✗ base_channels={base_ch} 有 {len(missing_keys)} 个缺失键")
+            except Exception as e:
+                print(f"  ✗ base_channels={base_ch} 失败: {e}")
+        
+        if model is None:
+            raise RuntimeError(f"Failed to load AERBPRO model from {final_ckpt}")
+        
+        model.eval()  # 设置为评估模式
+    else:
+        model = load_model_weights(model, final_ckpt, device_t)
+        model.float()  # 确保模型使用FP32权重
+        model.eval()  # 设置为评估模式
+    
+    print(f"模型已加载到设备: {device_t}")
     
     # 5. 推理
     print(f"\n5. 开始高精度滑动窗口推理 (Gaussian Weighted)...")
@@ -591,8 +704,12 @@ def main():
         save_overlap=save_overlap_map
     )
     inference_time = time.time() - inference_start
-    
-    # 6. 分析结果
+    prob_map = prob_map.transpose(*p_out)
+
+    print(f"推理完成，耗时: {inference_time:.2f}秒 ({inference_time/60:.1f}分钟)")
+    prob_map = np.ascontiguousarray(prob_map)
+
+    # 6. 结果分析
     print(f"\n6. 结果分析...")
     print(f"概率图范围: 最小值={prob_map.min():.6f}, 最大值={prob_map.max():.6f}")
     print(f"概率图统计: 均值={prob_map.mean():.6f}, 标准差={prob_map.std():.6f}")
@@ -607,19 +724,19 @@ def main():
     print(f"\n7. 保存结果...")
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     input_name = Path(input_path).stem
-    output_dir = Path('outputs') / input_name / model_name / timestamp
+    output_dir = Path(outputdir) / input_name / model_name / timestamp
     output_dir.mkdir(parents=True, exist_ok=True)
     
-    # 二值化
-    mask = (prob_map >= threshold).astype(np.uint8)
-    pos_ratio = mask.mean()
-    
-    # 只保存二值mask（不保存概率图）
+    # 保存二值mask
     mask_path = output_dir / out_mask_npy.name
     np.save(mask_path, mask)
     print(f"✓ 二值mask保存到: {mask_path}")
     
-    # 不保存重叠图
+    # 保存概率图
+    prob_path = output_dir / out_prob_npy.name
+    np.save(prob_path, prob_map.astype(np.float32))
+    print(f"✓ 概率图保存到: {prob_path}")
+    print(f"  概率图大小: {prob_map.nbytes / 1024**2:.1f} MB")
     
     # 保存处理摘要
     summary = {
@@ -636,6 +753,7 @@ def main():
         'inference_time_s': float(inference_time),
         'inference_time_min': float(inference_time / 60),
         'positive_ratio': float(pos_ratio),
+        'prob_range': {'min': float(prob_map.min()), 'max': float(prob_map.max()), 'mean': float(prob_map.mean())},
         'output_dir': str(output_dir)
     }
     summary_path = output_dir / 'inference_summary.json'
@@ -643,84 +761,84 @@ def main():
         json.dump(summary, f, indent=2, ensure_ascii=False)
     print(f"✓ 处理摘要保存到: {summary_path}")
     
-    # 8. 生成 SEGY
-    print(f"\n8. 生成 SEG-Y 文件...")
-    ORIGINAL_FILE = r'F3data.sgy'
-    PREDICTED_NPY = mask_path
-    OUTPUT_FILE = output_dir / 'predicted_result_segyio_final1.sgy'
+    # # 8. 生成 SEG-Y 文件...
+    # print(f"\n8. 生成 SEG-Y 文件...")
+    # ORIGINAL_FILE = input_path.with_suffix('.sgy')
+    # PREDICTED_NPY = mask_path
+    # OUTPUT_FILE = output_dir / 'predicted_result_segyio_final1.sgy'
     
-    if os.path.exists(ORIGINAL_FILE) and PREDICTED_NPY.exists():
-        try:
-            print(f"  原始 SGY: {ORIGINAL_FILE}")
-            print(f"  预测 NPY: {PREDICTED_NPY}")
+    # if os.path.exists(ORIGINAL_FILE) and PREDICTED_NPY.exists():
+    #     try:
+    #         print(f"  原始 SGY: {ORIGINAL_FILE}")
+    #         print(f"  预测 NPY: {PREDICTED_NPY}")
             
-            predicted_data_np = np.load(PREDICTED_NPY).astype(np.float32)
+    #         predicted_data_np = np.load(PREDICTED_NPY).astype(np.float32)
             
-            # 验证维度
-            if predicted_data_np.ndim != 3:
-                raise ValueError(f"期望3D数据，实际维度: {predicted_data_np.ndim}")
+    #         # 验证维度
+    #         if predicted_data_np.ndim != 3:
+    #             raise ValueError(f"期望3D数据，实际维度: {predicted_data_np.ndim}")
             
-            if predicted_data_np.shape != expected_shape:
-                print(f"  警告: 预测形状 {predicted_data_np.shape} != 期望 {expected_shape}")
+    #         if predicted_data_np.shape != expected_shape:
+    #             print(f"  警告: 预测形状 {predicted_data_np.shape} != 期望 {expected_shape}")
             
-            N_samples = predicted_data_np.shape[2]
-            predicted_data_2d = predicted_data_np.reshape(-1, N_samples)
-            N_traces = predicted_data_2d.shape[0]
+    #         N_samples = predicted_data_np.shape[2]
+    #         predicted_data_2d = predicted_data_np.reshape(-1, N_samples)
+    #         N_traces = predicted_data_2d.shape[0]
             
-            print(f"  -> 数据已重塑: ({N_traces} 道, {N_samples} 采样点)")
+    #         print(f"  -> 数据已重塑: ({N_traces} 道, {N_samples} 采样点)")
             
-            with segyio.open(ORIGINAL_FILE, ignore_geometry=True) as src:
-                spec = segyio.spec()
-                spec.ilines = src.ilines
-                spec.xlines = src.xlines
-                spec.samples = src.samples
-                spec.format = 5
-                spec.tracecount = N_traces
+    #         with segyio.open(ORIGINAL_FILE, ignore_geometry=True) as src:
+    #             spec = segyio.spec()
+    #             spec.ilines = src.ilines
+    #             spec.xlines = src.xlines
+    #             spec.samples = src.samples
+    #             spec.format = 5
+    #             spec.tracecount = N_traces
                 
-                original_tracecount = src.tracecount
-                if original_tracecount != N_traces:
-                    print(f"  警告：原始文件道数 ({original_tracecount}) 与预测 ({N_traces}) 不匹配")
+    #             original_tracecount = src.tracecount
+    #             if original_tracecount != N_traces:
+    #                 print(f"  警告：原始文件道数 ({original_tracecount}) 与预测 ({N_traces}) 不匹配")
                 
-                N_copy_traces = min(original_tracecount, N_traces)
+    #             N_copy_traces = min(original_tracecount, N_traces)
                 
-                print(f"  正在写入: {OUTPUT_FILE} ...")
-                with segyio.create(str(OUTPUT_FILE), spec) as dst:
-                    dst.text[0] = src.text[0]
-                    dst.bin = src.bin
-                    for i in tqdm(range(N_traces), desc='  写入SEG-Y', unit='trace'):
-                        dst.trace[i] = predicted_data_2d[i]
-                        if i < N_copy_traces:
-                            dst.header[i] = src.header[i]
-                        else:
-                            dst.header[i] = src.header[0] if original_tracecount > 0 else {}
-                            dst.header[i][segyio.cdp] = i + 1
-                            dst.header[i][segyio.traceno] = i + 1
+    #             print(f"  正在写入: {OUTPUT_FILE} ...")
+    #             with segyio.create(str(OUTPUT_FILE), spec) as dst:
+    #                 dst.text[0] = src.text[0]
+    #                 dst.bin = src.bin
+    #                 for i in tqdm(range(N_traces), desc='  写入SEG-Y', unit='trace'):
+    #                     dst.trace[i] = predicted_data_2d[i]
+    #                     if i < N_copy_traces:
+    #                         dst.header[i] = src.header[i]
+    #                     else:
+    #                         dst.header[i] = src.header[0] if original_tracecount > 0 else {}
+    #                         dst.header[i][segyio.cdp] = i + 1
+    #                         dst.header[i][segyio.traceno] = i + 1
                             
-            print(f"✓ SEG-Y 文件生成成功: {OUTPUT_FILE}")
-        except Exception as e:
-            print(f"SEGY生成失败: {e}")
-            import traceback
-            traceback.print_exc()
-    else:
-        if not os.path.exists(ORIGINAL_FILE):
-            print(f"  错误：原始 SEG-Y 文件未找到：{ORIGINAL_FILE}")
-        print("  -> 跳过 SEG-Y 生成。")
+    #         print(f"✓ SEG-Y 文件生成成功: {OUTPUT_FILE}")
+    #     except Exception as e:
+    #         print(f"SEGY生成失败: {e}")
+    #         import traceback
+    #         traceback.print_exc()
+    # else:
+    #     if not os.path.exists(ORIGINAL_FILE):
+    #         print(f"  错误：原始 SEG-Y 文件未找到：{ORIGINAL_FILE}")
+    #     print("  -> 跳过 SEG-Y 生成。")
 
-    print(f"\n所有输出已保存到目录: {output_dir}")
+    # print(f"\n所有输出已保存到目录: {output_dir}")
     
-    print("\n" + "=" * 70)
-    print("高精度推理完成!")
-    print("=" * 70)
-    print(f"关键信息:")
-    print(f"  • 模型: {model_name}")
-    print(f"  • 总patch数: {len(coords):,}")
-    print(f"  • 推理时间: {inference_time/60:.1f} 分钟")
-    print(f"  • 正样本比例: {pos_ratio:.4%}")
-    print(f"  • 输出文件:")
-    print(f"      - {out_mask_npy.name} (二值分割)")
-    print(f"      - inference_summary.json (处理摘要)")
-    print(f"      - predicted_result_segyio_final1.sgy (SEG-Y格式)")
-    print("=" * 70)
+    # print("\n" + "=" * 70)
+    # print("高精度推理完成!")
+    # print("=" * 70)
+    # print(f"关键信息:")
+    # print(f"  • 模型: {model_name}")
+    # print(f"  • 总patch数: {len(coords):,}")
+    # print(f"  • 推理时间: {inference_time/60:.1f} 分钟")
+    # print(f"  • 正样本比例: {pos_ratio:.4%}")
+    # print(f"  • 输出文件:")
+    # print(f"      - {out_mask_npy.name} (二值分割)")
+    # print(f"      - inference_summary.json (处理摘要)")
+    # print(f"      - predicted_result_segyio_final1.sgy (SEG-Y格式)")
+    # print("=" * 70)
 
 if __name__ == "__main__":
     try:

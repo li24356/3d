@@ -19,12 +19,13 @@ from models.AERB3d import AERBUNet3DLight
 from models.attention_unet3d import LightAttentionUNet3D
 from models.seunet3d import SEUNet3D
 from models.attention_unet3d import AttentionUNet3D
-
+from models.AERB_pro import AERBPRO
+from models.AERB3d import AERBUNet3D
 # ============================================================================
 # 可编辑模型配置（在此处修改以训练不同模型）
 # ============================================================================
 MODEL_CONFIG = {
-    "model_name": "attention_unet3d",  # 可选 'unet3d', 'aerb_light', 'attn_light', 'seunet3d',attention_unet3d
+    "model_name": "attn_light",  # 可选 'unet3d', 'aerb_light', 'attn_light', 'seunet3d',attention_unet3d', 'aerb_pro', 'aerb'
     "in_channels": 1,
     "out_channels": 1,
     "base_channels": 16,
@@ -39,6 +40,8 @@ _MODEL_REGISTRY = {
     "attn_light": LightAttentionUNet3D,
     "seunet3d": SEUNet3D,
     "attention_unet3d": AttentionUNet3D,
+    "aerb_pro": AERBPRO,
+    "aerb": AERBUNet3D,
 }
 
 
@@ -745,13 +748,17 @@ def validate(model, loader, criterion_bce, criterion_dice, device, use_robust_no
         'iou': running_iou / total
     }
 
+
+
+
+
 # ============================================================================
 # 主函数
 # ============================================================================
 def main():
     # ========== 训练配置 ==========
-    root = Path('.')
-    epochs = 400               # 总训练epoch数（自适应调度器会自动调整）
+    root = Path('./')  # 数据根目录（请根据实际情况修改）synthetic_data_v1
+    epochs = 400            # 总训练epoch数（自适应调度器会自动调整）
     batch_size = 8               # 批大小
     lr = 1e-4                    # 初始学习率
     workers = 4                  # 数据加载线程数
@@ -915,6 +922,12 @@ def main():
     with open(config_save_path, 'w') as f:
         f.write(f"训练配置\n")
         f.write(f"========\n")
+        f.write(f"\n【数据路径】\n")
+        f.write(f"训练数据: {train_data}\n")
+        f.write(f"训练标签: {train_label}\n")
+        f.write(f"验证数据: {val_data}\n")
+        f.write(f"验证标签: {val_label}\n")
+        f.write(f"\n【训练配置】\n")
         f.write(f"Epochs: {epochs}\n")
         f.write(f"归一化方法: {'鲁棒Z-score(MAD)' if use_robust_normalization else '传统Z-score'}\n")
         f.write(f"归一化截断范围: {norm_clip_range}\n")
@@ -1127,7 +1140,7 @@ def main():
             print(f'  ✅ 保存最佳IoU模型 (val_iou: {val_metrics["iou"]:.6f}, val_loss: {val_loss:.6f})')
         
         # ========== 定期保存训练曲线 ==========
-        if epoch % 5 == 0 or epoch == epochs or should_stop:
+        if epoch % 10 == 0 or epoch == epochs or should_stop:
             # 扩展的绘图函数
             def plot_extended_training_curves(train_losses, val_losses, train_ious, val_ious, 
                                             learning_rates=None, save_path=None):

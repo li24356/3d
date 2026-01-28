@@ -24,6 +24,46 @@ from models.attention_unet3d import AttentionUNet3D
 from models.CBAM import CBAM_UNet3D
 from models.AERB_pro import AERBPRO
 
+
+
+
+# ============================================================================
+# 可编辑模型配置（在此处修改以训练不同模型）
+# ============================================================================
+MODEL_CONFIG = {
+    "model_name": "aerb_light",  # 可选: 'unet3d', 'aerb_light', 'attn_light', 'seunet3d', 'aerb3d', 'attention_unet3d', 'cbam_unet3d', 'aerb_pro'
+    "in_channels": 1,
+    "out_channels": 1,
+    "pretrained_ckpt": None,
+}
+# ============================================================================
+# 保存 checkpoint 的根目录
+checkpoints_root = Path('checkpoints5')
+
+# ========== 训练配置 ==========
+root = Path('./synthetic_data_v1')  # synthetic_data_v1
+epochs = 150             # 总训练epoch数（自适应调度器会自动调整）
+batch_size = 8              # 批大小（AERB_pro显存需求较大，降低到4）
+lr = 1e-4                    # 初始学习率
+workers = 4             # 数据加载线程数
+
+# ========== 数据增强配置 ==========
+augment_mode = 'none'  # 可选: 'none'(无增强), 'flip'(仅翻转), 'flip_rotation'(翻转+旋转)
+# ============================================
+
+# 简单模型注册表与构造器
+_MODEL_REGISTRY = {
+    "unet3d": UNet3D,
+    "aerb_light": AERBUNet3DLight,
+    "attn_light": LightAttentionUNet3D,
+    "seunet3d": SEUNet3D,
+    'aerb3d': AERBUNet3D,
+    'attention_unet3d': AttentionUNet3D,
+    'cbam_unet3d': CBAM_UNet3D,
+    'aerb_pro': AERBPRO,
+}
+
+
 # ======= TF32 设置（RTX 3090 强烈推荐）=======
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
@@ -99,32 +139,12 @@ def set_seed(seed=42):
 # 设置随机种子
 set_seed(42)
 
-# ============================================================================
-# 可编辑模型配置（在此处修改以训练不同模型）
-# ============================================================================
-MODEL_CONFIG = {
-    "model_name": "aerb_pro",  # 可选: 'unet3d', 'aerb_light', 'attn_light', 'seunet3d', 'aerb3d', 'attention_unet3d', 'cbam_unet3d', 'aerb_pro'
-    "in_channels": 1,
-    "out_channels": 1,
-    "pretrained_ckpt": None,
-}
 
-# 简单模型注册表与构造器
-_MODEL_REGISTRY = {
-    "unet3d": UNet3D,
-    "aerb_light": AERBUNet3DLight,
-    "attn_light": LightAttentionUNet3D,
-    "seunet3d": SEUNet3D,
-    'aerb3d': AERBUNet3D,
-    'attention_unet3d': AttentionUNet3D,
-    'cbam_unet3d': CBAM_UNet3D,
-    'aerb_pro': AERBPRO,
-}
+
 
 def augment_batch_data(x, y):
     """
-    【回退版】仅保留水平/垂直翻转。
-    去掉了 Transpose，因为实际测试证明地震数据的方向性差异过大，不适合强制交换。
+    数据增强：随机翻转 + 随机旋转
     """
     # 1. 随机水平翻转 (X轴镜像)
     if random.random() > 0.5:
@@ -135,6 +155,29 @@ def augment_batch_data(x, y):
     if random.random() > 0.5:
         x = torch.flip(x, dims=[3])
         y = torch.flip(y, dims=[3])
+    
+    # 3. 随机旋转 (在Y-X平面上旋转90度的倍数)
+    if random.random() > 0.5:
+        k = random.randint(1, 3)  # 随机选择旋转90°/180°/270°
+        x = torch.rot90(x, k=k, dims=[3, 4])  # 在Y-X平面旋转
+        y = torch.rot90(y, k=k, dims=[3, 4])
+    return x, y
+
+
+def augment_batch_data_flip_only(x, y):
+    """
+    数据增强：仅随机翻转（无旋转）
+    """
+    # 1. 随机水平翻转 (X轴镜像)
+    if random.random() > 0.5:
+        x = torch.flip(x, dims=[4]) 
+        y = torch.flip(y, dims=[4])
+        
+    # 2. 随机垂直翻转 (Y轴镜像)
+    if random.random() > 0.5:
+        x = torch.flip(x, dims=[3])
+        y = torch.flip(y, dims=[3])
+    
     return x, y
 
 # ============================================================================
@@ -592,7 +635,8 @@ def analyze_normalization_effect(loader, use_robust_norm=True, num_batches=5):
 # ============================================================================
 def train_epoch(model, loader, opt, criterion,
                 device, scaler=None, accum_steps=1, max_grad_norm=1.0,
-                use_robust_norm=True,scheduler=None, epoch=1, total_epochs=150):
+                use_robust_norm=True, scheduler=None, epoch=1, total_epochs=150,
+                augment_mode='flip_rotation'):
     """
     训练一个epoch，包含梯度裁剪和时间统计
     
@@ -601,6 +645,7 @@ def train_epoch(model, loader, opt, criterion,
         use_robust_norm: 是否使用鲁棒归一化
         epoch: 当前epoch（用于时间估算）
         total_epochs: 总epoch数（用于时间估算）
+        augment_mode: 数据增强模式 ('none': 无增强, 'flip': 仅翻转, 'flip_rotation': 翻转+旋转)
     """
     model.train()
     running_loss = 0.0
@@ -617,11 +662,16 @@ def train_epoch(model, loader, opt, criterion,
     for step, (x, y) in enumerate(tqdm(loader, desc='train', leave=False), start=1):
         batch_start = time.time()
         
-        # ===== 直接转到GPU，移除增强步骤 =====
+        # ===== 直接转到GPU =====
         x = x.to(device)
         y = y.float().to(device)
         
-        # x, y = augment_batch_data(x, y)
+        # ===== 根据配置选择数据增强方式 =====
+        if augment_mode == 'flip_rotation':
+            x, y = augment_batch_data(x, y)
+        elif augment_mode == 'flip':
+            x, y = augment_batch_data_flip_only(x, y)
+        # augment_mode == 'none' 时不做任何增强
         
         # ===== GPU上执行归一化 =====
         if use_robust_norm:
@@ -644,8 +694,12 @@ def train_epoch(model, loader, opt, criterion,
 
         # 记录指标（与验证保持一致）
         with torch.no_grad():
-            # 纯 BCE 观察分类误差
-            bce = F.binary_cross_entropy_with_logits(logits, y)
+            # 计算 Focal Loss (不计 Dice)
+            bce_loss_raw = F.binary_cross_entropy_with_logits(logits, y, reduction='none')
+            pt = torch.exp(-bce_loss_raw)
+            alpha_t = y * criterion.alpha + (1 - y) * (1 - criterion.alpha)
+            focal = alpha_t * (1 - pt) ** criterion.gamma * bce_loss_raw
+            focal_loss = focal.mean()
             # 纯 Dice 观察重叠度
             probs = torch.sigmoid(logits)
             intersection = (probs * y).sum()
@@ -654,7 +708,7 @@ def train_epoch(model, loader, opt, criterion,
 
         batch_size = x.size(0)
         running_loss += loss.item() * batch_size
-        running_bce += bce.item() * batch_size
+        running_bce += focal_loss.item() * batch_size
         running_dice += dice.item() * batch_size
         running_iou += batch_iou.item() * batch_size
 
@@ -731,9 +785,13 @@ def validate(model, loader, criterion, device, use_robust_norm=True):
     running_iou = 0.0
     
     # 定义辅助计算函数（仅用于日志显示，不影响反向传播或Loss计算）
-    # 这里的 BCE 用于观察纯粹的分类误差
-    def calc_bce(logits, targets):
-        return F.binary_cross_entropy_with_logits(logits, targets)
+    # 这里的 Focal Loss 用于观察分类误差（带聚焦机制）
+    def calc_focal(logits, targets):
+        bce_loss_raw = F.binary_cross_entropy_with_logits(logits, targets, reduction='none')
+        pt = torch.exp(-bce_loss_raw)
+        alpha_t = targets * criterion.alpha + (1 - targets) * (1 - criterion.alpha)
+        focal = alpha_t * (1 - pt) ** criterion.gamma * bce_loss_raw
+        return focal.mean()
         
     # 这里的 Dice 用于观察纯粹的重叠度
     def calc_dice(logits, targets):
@@ -767,9 +825,8 @@ def validate(model, loader, criterion, device, use_robust_norm=True):
             # ====================================================
             # 3. 辅助指标计算 (仅用于显示/日志)
             # ====================================================
-            # 为了让日志里的 bce_loss 和 dice_loss 有数据，我们单独算一下
-            # 注意：这里的 loss_dice 是纯 Dice，而 criterion 里面可能包含 Focal
-            val_bce = calc_bce(logits, y)
+            # 为了让日志里的 focal_loss 和 dice_loss 有数据，我们单独算一下
+            val_focal = calc_focal(logits, y)
             val_dice = calc_dice(logits, y)
             
             batch_iou = _batch_iou(logits, y)
@@ -777,15 +834,15 @@ def validate(model, loader, criterion, device, use_robust_norm=True):
             # 累加
             batch_size = x.size(0)
             running_loss += loss.item() * batch_size
-            running_bce += val_bce.item() * batch_size
+            running_bce += val_focal.item() * batch_size
             running_dice += val_dice.item() * batch_size
             running_iou += batch_iou.item() * batch_size
     
     total = len(loader.dataset)
     return {
         'total_loss': running_loss / total, # 这是最重要的指标，用于 Early Stopping
-        'bce_loss': running_bce / total,    # 仅作参考
-        'dice_loss': running_dice / total,  # 仅作参考
+        'bce_loss': running_bce / total,    # Focal Loss (仅作参考)
+        'dice_loss': running_dice / total,  # 纯 Dice (仅作参考)
         'iou': running_iou / total          # 重要的评价指标
     }
 
@@ -793,12 +850,6 @@ def validate(model, loader, criterion, device, use_robust_norm=True):
 # 主函数
 # ============================================================================
 def main():
-    # ========== 训练配置 ==========
-    root = Path('.')
-    epochs = 150             # 总训练epoch数（自适应调度器会自动调整）
-    batch_size = 4              # 批大小（AERB_pro显存需求较大，降低到4）
-    lr = 1e-4                    # 初始学习率
-    workers = 8               # 数据加载线程数
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     
     # ========== 归一化配置 ==========
@@ -838,9 +889,10 @@ def main():
     print('训练配置')
     print('=' * 70)
     print(f'总Epochs: {epochs}')
+    print(f'数据增强: {augment_mode} ({"无增强" if augment_mode=="none" else "仅翻转" if augment_mode=="flip" else "翻转+旋转"})')
     print(f'归一化方法: {"鲁棒Z-score(MAD)" if use_robust_normalization else "传统Z-score"}')
     print(f'归一化截断范围: {norm_clip_range}')
-    print(f'损失权重: BCE=0.3, Dice=0.7')
+    print(f'损失函数: DiceFocalLoss (Dice: 1.0, Focal: 1.0, gamma=2.0, alpha=0.75)')
     print(f'优化器: {optimizer_type}, LR: {lr}, Weight Decay: {weight_decay}')
     print(f'调度器类型: {scheduler_type}')
     print(f'梯度裁剪: {max_grad_norm}')
@@ -959,8 +1011,7 @@ def main():
         gap_threshold=overfit_gap_threshold
     )
     
-    # ========== 保存目录设置 ==========
-    checkpoints_root = Path('checkpoints3')
+
 
     # 修改这里：直接使用 model_name 作为 model_tag
     model_tag = MODEL_CONFIG["model_name"]  # 简化逻辑
@@ -979,14 +1030,21 @@ def main():
     with open(config_save_path, 'w') as f:
         f.write(f"训练配置\n")
         f.write(f"========\n")
+        f.write(f"\n【数据路径】\n")
+        f.write(f"训练数据: {train_data}\n")
+        f.write(f"训练标签: {train_label}\n")
+        f.write(f"验证数据: {val_data}\n")
+        f.write(f"验证标签: {val_label}\n")
+        f.write(f"\n【训练配置】\n")
         f.write(f"Epochs: {epochs}\n")
-        f.write(f"归一化方法: {'鲁棒Z-score(MAD)' if use_robust_normalization else '传统Z-score'}\n")
+        f.write(f"数据增强: {augment_mode}\n")
+        f.write(f"归一化方法: GPU Robust Z-Score (MAD)\n")
         f.write(f"归一化截断范围: {norm_clip_range}\n")
-        f.write(f"损失权重: BCE=0.3, Dice=0.7\n")
+        f.write(f"损失函数: DiceFocalLoss (Dice: 1.0, Focal: 1.0, gamma=2.0, alpha=0.75)\n")
         f.write(f"优化器: {optimizer_type}\n")
         f.write(f"学习率: {lr}\n")
         f.write(f"权重衰减: {weight_decay}\n")
-        f.write(f"调度器类型: {scheduler_type}\n")
+        f.write(f"调度器类型: One-Cycle LR\n")
         f.write(f"批大小: {batch_size}\n")
         f.write(f"工作线程: {workers}\n")
         f.write(f"AMP混合精度: {'启用' if use_amp else '禁用'}\n")
@@ -1020,8 +1078,8 @@ def main():
             model, loader_train, opt, criterion,
             device, scaler=scaler, accum_steps=accum_steps, 
             max_grad_norm=max_grad_norm,
-            use_robust_norm=use_robust_normalization,scheduler=scheduler,
-            epoch=epoch, total_epochs=epochs
+            use_robust_norm=use_robust_normalization, scheduler=scheduler,
+            epoch=epoch, total_epochs=epochs, augment_mode=augment_mode
         )
         train_loss = train_metrics['total_loss']
         
@@ -1040,9 +1098,9 @@ def main():
         learning_rates_history.append(opt.param_groups[0]['lr'])
         
         # 打印结果
-        print(f"  Train Loss: {train_loss:.6f} (BCE: {train_metrics['bce_loss']:.6f}, "
+        print(f"  Train Loss: {train_loss:.6f} (Focal: {train_metrics['bce_loss']:.6f}, "
               f"Dice: {train_metrics['dice_loss']:.6f}, IoU: {train_metrics['iou']:.6f})")
-        print(f"  Val Loss:   {val_loss:.6f} (BCE: {val_metrics['bce_loss']:.6f}, "
+        print(f"  Val Loss:   {val_loss:.6f} (Focal: {val_metrics['bce_loss']:.6f}, "
               f"Dice: {val_metrics['dice_loss']:.6f}, IoU: {val_metrics['iou']:.6f})")
         print(f"  当前学习率: {opt.param_groups[0]['lr']:.2e}")
         
@@ -1302,6 +1360,7 @@ def main():
                 f.write(f"  最终学习率: {opt.param_groups[0]['lr']:.2e}\n")
                 f.write(f"  模型: {MODEL_CONFIG['model_name']}\n")
                 f.write(f"  模型参数量: {total_params:,}\n")
+                f.write(f"  数据增强: {augment_mode}\n")
                 f.write(f"  归一化方法: {'鲁棒Z-score(MAD)' if use_robust_normalization else '传统Z-score'}\n")
             
             print(f"过拟合报告已保存至: {overfit_info_path}")
@@ -1346,12 +1405,13 @@ def main():
             f.write(f"梯度裁剪: {max_grad_norm}\n")
             f.write(f"模型: {MODEL_CONFIG['model_name']}\n")
             f.write(f"模型参数量: {total_params:,}\n")
+            f.write(f"数据增强: {augment_mode}\n")
             f.write(f"AMP混合精度: {'启用' if use_amp else '禁用'}\n")
             f.write(f"批大小: {batch_size}\n")
             f.write(f"梯度累积步数: {accum_steps}\n")
             f.write(f"归一化方法: {'鲁棒Z-score(MAD)' if use_robust_normalization else '传统Z-score'}\n")
             f.write(f"归一化截断范围: {norm_clip_range}\n")
-            f.write(f"损失权重: BCE=0.3, Dice=0.7\n")
+            f.write(f"损失函数: DiceFocalLoss (Dice: 1.0, Focal: 1.0, gamma=2.0, alpha=0.75)\n")
             f.write(f"工作线程: {workers}\n")
         
         print(f"训练报告已保存至: {report_path}")

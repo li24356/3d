@@ -7,8 +7,8 @@ import os
 # --- 文件路径 ---
 # 请确保这些路径正确，否则会引发 FileNotFoundError
 ORIGINAL_FILE = r'2020Z205_3D_PSTM_TIME_mini_400_2600ms.sgy'
-PREDICTED_NPY = r"outputs\attn_light\20251218_204905\pred_mask.npy"
-
+PREDICTED_NPY = r"outputs2\2020Z205_3D_PSTM_TIME_mini_400_2600ms\attention_unet3d\20260120_153240\pred_mask.npy"
+                
 # 将输出文件保存到与 PREDICTED_NPY 相同的目录
 import os
 pred_dir = os.path.dirname(PREDICTED_NPY) or '.'

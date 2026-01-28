@@ -1,0 +1,33 @@
+{
+  "model": "attn_light",
+  "checkpoint": "checkpoints5\\attn_light_c16\\latest\\model_best_iou.pth",
+  "timestamp": "20260127_160150",
+  "input_file": "F3data.npy",
+  "input_shape": [
+    391,
+    601,
+    951
+  ],
+  "patch_size": [
+    128,
+    128,
+    128
+  ],
+  "stride": [
+    64,
+    64,
+    64
+  ],
+  "overlap_rate": 0.5,
+  "normalization": "robust_gpu",
+  "threshold": 0.5,
+  "inference_time_s": 25.7525954246521,
+  "inference_time_min": 0.42920992374420164,
+  "positive_ratio": 0.023058730383127946,
+  "prob_range": {
+    "min": 0.0002591051161289215,
+    "max": 1.0,
+    "mean": 0.03290528431534767
+  },
+  "output_dir": "outputs999\\F3data\\attn_light\\20260127_160150"
+}

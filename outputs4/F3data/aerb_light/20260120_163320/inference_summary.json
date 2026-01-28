@@ -1,0 +1,28 @@
+{
+  "model": "aerb_light",
+  "checkpoint": "checkpoints1\\aerb_light_c16\\latest\\model_best_iou.pth",
+  "timestamp": "20260120_163320",
+  "input_file": "F3data.npy",
+  "input_shape": [
+    601,
+    951,
+    391
+  ],
+  "patch_size": [
+    128,
+    128,
+    128
+  ],
+  "stride": [
+    64,
+    64,
+    64
+  ],
+  "overlap_rate": 0.5,
+  "normalization": "robust_gpu",
+  "threshold": 0.5,
+  "inference_time_s": 91.83579659461975,
+  "inference_time_min": 1.5305966099103292,
+  "positive_ratio": 0.0415646989831917,
+  "output_dir": "outputs4\\F3data\\aerb_light\\20260120_163320"
+}

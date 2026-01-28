@@ -1,0 +1,28 @@
+{
+  "model": "attention_unet3d",
+  "checkpoint": "checkpoints1\\attention_unet3d_c16\\latest\\model_best_iou.pth",
+  "timestamp": "20260123_152827",
+  "input_file": "2020Z205_3D_PSTM_TIME_mini_400_2600ms.npy",
+  "input_shape": [
+    501,
+    601,
+    1101
+  ],
+  "patch_size": [
+    128,
+    128,
+    128
+  ],
+  "stride": [
+    64,
+    64,
+    64
+  ],
+  "overlap_rate": 0.5,
+  "normalization": "robust_gpu",
+  "threshold": 0.5,
+  "inference_time_s": 106.3139021396637,
+  "inference_time_min": 1.771898368994395,
+  "positive_ratio": 0.03154038062086288,
+  "output_dir": "outputs5\\2020Z205_3D_PSTM_TIME_mini_400_2600ms\\attention_unet3d\\20260123_152827"
+}

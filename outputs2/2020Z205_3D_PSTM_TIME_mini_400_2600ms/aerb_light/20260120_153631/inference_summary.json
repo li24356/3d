@@ -1,0 +1,28 @@
+{
+  "model": "aerb_light",
+  "checkpoint": "checkpoints1\\aerb_light_c16\\latest\\model_best_iou.pth",
+  "timestamp": "20260120_153631",
+  "input_file": "2020Z205_3D_PSTM_TIME_mini_400_2600ms.npy",
+  "input_shape": [
+    501,
+    601,
+    1101
+  ],
+  "patch_size": [
+    128,
+    128,
+    128
+  ],
+  "stride": [
+    64,
+    64,
+    64
+  ],
+  "overlap_rate": 0.5,
+  "normalization": "robust_gpu",
+  "threshold": 0.5,
+  "inference_time_s": 131.19631147384644,
+  "inference_time_min": 2.186605191230774,
+  "positive_ratio": 0.05814658688836614,
+  "output_dir": "outputs2\\2020Z205_3D_PSTM_TIME_mini_400_2600ms\\aerb_light\\20260120_153631"
+}

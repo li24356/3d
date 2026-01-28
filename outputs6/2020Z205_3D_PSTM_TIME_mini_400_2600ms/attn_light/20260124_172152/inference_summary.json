@@ -1,0 +1,28 @@
+{
+  "model": "attn_light",
+  "checkpoint": "checkpoints5\\attn_light_c16\\latest\\model_best_iou.pth",
+  "timestamp": "20260124_172152",
+  "input_file": "2020Z205_3D_PSTM_TIME_mini_400_2600ms.npy",
+  "input_shape": [
+    1101,
+    601,
+    501
+  ],
+  "patch_size": [
+    128,
+    128,
+    128
+  ],
+  "stride": [
+    64,
+    64,
+    64
+  ],
+  "overlap_rate": 0.5,
+  "normalization": "robust_gpu",
+  "threshold": 0.5,
+  "inference_time_s": 36.040462493896484,
+  "inference_time_min": 0.6006743748982747,
+  "positive_ratio": 0.041488587625165566,
+  "output_dir": "outputs6\\2020Z205_3D_PSTM_TIME_mini_400_2600ms\\attn_light\\20260124_172152"
+}

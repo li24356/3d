@@ -1,0 +1,33 @@
+{
+  "model": "attention_unet3d",
+  "checkpoint": "checkpoints7\\attention_unet3d\\latest\\model_best_iou.pth",
+  "timestamp": "20260128_161850",
+  "input_file": "F3data.npy",
+  "input_shape": [
+    391,
+    601,
+    951
+  ],
+  "patch_size": [
+    128,
+    128,
+    128
+  ],
+  "stride": [
+    64,
+    64,
+    64
+  ],
+  "overlap_rate": 0.5,
+  "normalization": "robust_gpu",
+  "threshold": 0.5,
+  "inference_time_s": 36.84488892555237,
+  "inference_time_min": 0.6140814820925394,
+  "positive_ratio": 0.006752062961303379,
+  "prob_range": {
+    "min": 2.0548895918182097e-06,
+    "max": 0.9999998211860657,
+    "mean": 0.0106921112164855
+  },
+  "output_dir": "outputs999\\F3data\\attention_unet3d\\20260128_161850"
+}
